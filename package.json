@@ -1,0 +1,18 @@
+{
+  "name": "hermes-agent",
+  "version": "1.0.0",
+  "description": "Hermes — Telegram-controlled agentic assistant powered by DeepSeek API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "node-telegram-bot-api": "^0.66.0",
+    "simple-git": "^3.25.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
