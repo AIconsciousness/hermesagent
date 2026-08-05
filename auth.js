@@ -4,7 +4,7 @@
  * This check runs on EVERY incoming message.
  */
 
-const AUTHORIZED_ID = process.env.AUTHORIZED_TELEGRAM_ID;
+const AUTHORIZED_ID = process.env.AUTHORIZED_TELEGRAM_ID || process.env.TELEGRAM_CHAT_ID;
 
 /**
  * Checks whether the sender of a Telegram message is authorized.

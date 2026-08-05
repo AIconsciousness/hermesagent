@@ -55,8 +55,8 @@ cp .env.example .env
 | Variable | Description |
 |---|---|
 | `DEEPSEEK_API_KEY` | API key from [platform.deepseek.com](https://platform.deepseek.com) |
-| `TELEGRAM_TOKEN` | Bot token from [@BotFather](https://t.me/BotFather) |
-| `AUTHORIZED_TELEGRAM_ID` | Your Telegram numeric user ID (from [@userinfobot](https://t.me/userinfobot)) |
+| `TELEGRAM_BOT_TOKEN` | Bot token from [@BotFather](https://t.me/BotFather) |
+| `TELEGRAM_CHAT_ID` | Your Telegram numeric user ID (from [@userinfobot](https://t.me/userinfobot)) |
 | `GITHUB_TOKEN` | GitHub PAT with `repo` scope |
 | `GITHUB_REPO_URL` | `https://{GITHUB_TOKEN}@github.com/AIconsciousness/hermesagent.git` |
 | `RENDER_EXTERNAL_URL` | Your Render app URL (e.g., `https://hermes-agent.onrender.com`) |

@@ -28,11 +28,11 @@ const {
 // CONFIGURATION
 // ============================================================================
 
-const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_TOKEN;
 const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL;
 
 if (!TELEGRAM_TOKEN) {
-  console.error("[server] FATAL: TELEGRAM_TOKEN is not set in environment variables.");
+  console.error("[server] FATAL: TELEGRAM_BOT_TOKEN is not set in environment variables.");
   process.exit(1);
 }
 
