@@ -112,8 +112,8 @@ async function decideAction(userMessage, history = []) {
           }
           jsonStr = jsonStr.trim();
 
-          console.log("[brain] DeepSeek raw response:", content);
-          console.log("[brain] Cleaned JSON:", jsonStr);
+          console.log("[brain] DeepSeek raw response (first 300 chars):", content.substring(0, 300));
+          console.log("[brain] Cleaned JSON (first 300 chars):", jsonStr.substring(0, 300));
 
           const action = JSON.parse(jsonStr);
           resolve(action);

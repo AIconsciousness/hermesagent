@@ -495,7 +495,12 @@ async function executeConfirmedAction(action) {
  * @returns {Promise<{ success: boolean, message: string, needsConfirmation?: boolean }>}
  */
 async function executeAction(action, chatId) {
-  console.log(`[tools] Executing action: ${action.action}`, JSON.stringify(action));
+  // Log a summary only (truncate content) so Render logs stay clean and readable
+  const summary = { ...action };
+  if (typeof summary.content === "string" && summary.content.length > 200) {
+    summary.content = `[${summary.content.length} chars of content]`;
+  }
+  console.log(`[tools] Executing action: ${action.action}`, JSON.stringify(summary));
 
   switch (action.action) {
     case "chat":
