@@ -208,12 +208,21 @@ async function gitCommitAndPush(commitMessage) {
     const commitResult = await git.commit(truncated);
     console.log("[tools] Git commit:", commitResult.commit);
 
-    // Push to main (fallback to master)
+    // Push the current HEAD to the remote main branch.
+    // IMPORTANT: Render deploys in a DETACHED-HEAD state (it checks out a
+    // specific commit, not a branch), so a plain `git push origin main` is a
+    // no-op — the local "main" branch ref never moves and git reports
+    // "already updated". Pushing HEAD:main explicitly sends the latest commit.
     let pushResult;
     try {
-      pushResult = await git.push("origin", "main");
+      pushResult = await git.push(["origin", "HEAD:main"]);
     } catch (e) {
-      pushResult = await git.push("origin", "master");
+      try {
+        pushResult = await git.push(["origin", "HEAD:master"]);
+      } catch (e2) {
+        console.error("[tools] Push failed:", e2.message);
+        return `Git push failed: ${e2.message}`;
+      }
     }
 
     console.log("[tools] Git push:", pushResult);
