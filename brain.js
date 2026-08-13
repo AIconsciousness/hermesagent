@@ -36,9 +36,13 @@ You have access to these actions:
 5. Run a safe shell command (only npm install, npm test, node <file>, git status):
 { "action": "run_command", "command": "allowed command", "reply": "What to tell the user" }
 
+6. Read a file or list a directory inside /workspace (read-only, no confirmation):
+{ "action": "read_file", "path": "relative/path/in/workspace", "reply": "What to tell the user" }
+
 RULES:
 - All "path" values MUST be relative — do NOT use absolute paths, do NOT use ../ to escape.
 - Never suggest paths outside /workspace.
+- BEFORE editing a file, use read_file to see its current content so your "find" text matches exactly.
 - For edit_file, the "find" must be an exact substring present in the file.
 - For run_command, only use: npm install, npm test, node <workspace-file>, git status.
 - Keep "reply" concise — it will be sent directly to the user on Telegram.

@@ -58,6 +58,15 @@ app.get("/health", (_req, res) => {
 
 const bot = new TelegramBot(TELEGRAM_TOKEN, { webHook: { port: null } });
 
+// ============================================================================
+// CONVERSATION MEMORY
+// Stores recent message history per chat so the bot can build incrementally
+// (e.g., "now add a cart page" makes sense after "build a Zomato app").
+// NOTE: in-memory only — resets when Render restarts. Files persist on GitHub.
+// ============================================================================
+const conversationHistory = new Map(); // chatId -> [{ role, content }]
+const MAX_HISTORY = 20; // keep the last 20 messages (10 exchanges)
+
 /**
  * Main webhook handler. Every Telegram message hits this route.
  */
@@ -114,10 +123,13 @@ app.post("/webhook", async (req, res) => {
     }
 
     // STEP 3: Send to DeepSeek brain for decision-making
+    const historyKey = String(chatId);
+    const history = conversationHistory.get(historyKey) || [];
+
     await bot.sendMessage(chatId, "🤔 Thinking...");
     let action;
     try {
-      action = await decideAction(messageText);
+      action = await decideAction(messageText, history);
     } catch (err) {
       console.error("[server] Brain error:", err.message);
       await bot.sendMessage(chatId, "⚠️ Sorry, the AI decision engine encountered an error. Please try again.");
@@ -129,6 +141,12 @@ app.post("/webhook", async (req, res) => {
 
     // STEP 5: Reply to user on Telegram
     await bot.sendMessage(chatId, result.message);
+
+    // STEP 5b: Remember this exchange for future context
+    history.push({ role: "user", content: messageText });
+    history.push({ role: "assistant", content: result.message });
+    while (history.length > MAX_HISTORY) history.shift();
+    conversationHistory.set(historyKey, history);
 
     // STEP 6: Auto-commit if it was a file-modifying action (create/edit)
     // For destructive actions, the commit happens after confirmation

@@ -156,31 +156,39 @@ function isCommandAllowed(command) {
 async function gitCommitAndPush(commitMessage) {
   const git = simpleGit(WORKSPACE_DIR);
 
-  // Check if workspace is a git repo; if not, initialize one
+  // Check if workspace is inside a git repo; if not, initialize one
   const isRepo = await git.checkIsRepo().catch(() => false);
   if (!isRepo) {
     console.log("[tools] Workspace is not a git repo — initializing...");
     await git.init();
+  }
 
-    // Add the remote
-    const repoUrl = process.env.GITHUB_REPO_URL;
-    if (repoUrl) {
-      try {
-        await git.addRemote("origin", repoUrl);
-      } catch (e) {
-        // Remote might already exist
-        console.log("[tools] Remote 'origin' may already exist:", e.message);
-        try {
-          await git.removeRemote("origin");
-          await git.addRemote("origin", repoUrl);
-        } catch (e2) {
-          console.error("[tools] Failed to set remote:", e2.message);
-          return "Git remote setup failed. Check GITHUB_REPO_URL.";
-        }
-      }
-    } else {
-      return "GITHUB_REPO_URL not set — skipping git push.";
+  // Always ensure a git identity is configured (Render containers often lack one,
+  // which makes `git commit` fail with "Please tell me who you are")
+  try {
+    await git.addConfig("user.name", "Hermes Agent");
+    await git.addConfig("user.email", "hermes@agent.local");
+  } catch (e) {
+    console.log("[tools] git config note:", e.message);
+  }
+
+  // Always (re)point origin at the token-embedded URL so pushes are authenticated.
+  // On Render the clone's origin has no push credentials, which is why the
+  // original code never actually pushed — this fixes that.
+  const repoUrl = process.env.GITHUB_REPO_URL;
+  if (repoUrl) {
+    try {
+      await git.removeRemote("origin");
+    } catch (e) {
+      // no origin yet — fine
     }
+    try {
+      await git.addRemote("origin", repoUrl);
+    } catch (e) {
+      console.log("[tools] addRemote note:", e.message);
+    }
+  } else {
+    return "GITHUB_REPO_URL not set — skipping git push.";
   }
 
   try {
@@ -190,9 +198,9 @@ async function gitCommitAndPush(commitMessage) {
     // Stage everything
     await git.add(".");
 
-    // Check if there are staged changes
+    // Check if there is anything to commit
     const status = await git.status();
-    if (status.staged.length === 0 && status.modified.length === 0 && status.created.length === 0) {
+    if (!status.staged.length && !status.created.length && !status.modified.length && !status.deleted.length) {
       return "No changes to commit.";
     }
 
@@ -200,14 +208,16 @@ async function gitCommitAndPush(commitMessage) {
     const commitResult = await git.commit(truncated);
     console.log("[tools] Git commit:", commitResult.commit);
 
-    // Push
-    const pushResult = await git.push("origin", "main").catch(async () => {
-      // If main doesn't exist, try master
-      return await git.push("origin", "master");
-    });
+    // Push to main (fallback to master)
+    let pushResult;
+    try {
+      pushResult = await git.push("origin", "main");
+    } catch (e) {
+      pushResult = await git.push("origin", "master");
+    }
 
     console.log("[tools] Git push:", pushResult);
-    return `Changes committed and pushed to GitHub.`;
+    return "Changes committed and pushed to GitHub.";
   } catch (err) {
     console.error("[tools] Git error:", err.message);
     return `Git operation failed: ${err.message}`;
@@ -283,6 +293,40 @@ function actionEditFile(relativePath, find, replace) {
   fs.writeFileSync(resolved, modified, "utf8");
   logAction("edit_file", resolved, "success", `replaced ${find.length} chars`);
   return { success: true, message: `File edited: ${relativePath}` };
+}
+
+/**
+ * Reads a file (or lists a directory) inside /workspace.
+ * Read-only — no confirmation needed, no git commit.
+ *
+ * @param {string} relativePath — Relative file/dir path.
+ * @returns {{ success: boolean, message: string }}
+ */
+function actionReadFile(relativePath) {
+  const resolved = resolveWorkspacePath(relativePath);
+  if (!resolved) {
+    logAction("read_file", relativePath, "error", "path escape attempt");
+    return { success: false, message: `Error: Path "${relativePath}" is outside /workspace. Rejected.` };
+  }
+
+  if (!fs.existsSync(resolved)) {
+    logAction("read_file", resolved, "error", "file not found");
+    return { success: false, message: `Error: File "${relativePath}" does not exist.` };
+  }
+
+  const stat = fs.statSync(resolved);
+  if (stat.isDirectory()) {
+    const files = fs.readdirSync(resolved);
+    logAction("read_file", resolved, "success", `directory listing ${files.length} items`);
+    return {
+      success: true,
+      message: `📁 Directory "${relativePath}":\n${files.length ? files.join("\n") : "(empty)"}`,
+    };
+  }
+
+  const content = fs.readFileSync(resolved, "utf8");
+  logAction("read_file", resolved, "success", `bytes=${content.length}`);
+  return { success: true, message: `📄 "${relativePath}":\n${content.substring(0, 3500)}` };
 }
 
 /**
@@ -449,6 +493,10 @@ async function executeAction(action, chatId) {
       // Chat actions have no side effects — just return the reply
       logAction("chat", "n/a", "success", `reply=${(action.reply || "").length} chars`);
       return { success: true, message: action.reply || "(no reply)" };
+
+    case "read_file":
+      // Read-only — no confirmation, no git commit
+      return actionReadFile(action.path);
 
     case "create_file":
       return actionCreateFile(action.path, action.content);
