@@ -13,6 +13,8 @@
 require("dotenv").config();
 
 const express = require("express");
+const fs = require("fs");
+const path = require("path");
 const TelegramBot = require("node-telegram-bot-api");
 
 const { checkAuth } = require("./auth");
@@ -22,7 +24,14 @@ const {
   checkConfirmation,
   executeConfirmedAction,
   gitCommitAndPush,
+  WORKSPACE_DIR,
 } = require("./tools");
+const {
+  loadMemory,
+  saveMemory,
+  getChatMemory,
+  rememberExchange,
+} = require("./memory");
 
 // ============================================================================
 // CONFIGURATION
@@ -59,13 +68,49 @@ app.get("/health", (_req, res) => {
 const bot = new TelegramBot(TELEGRAM_TOKEN, { webHook: { port: null } });
 
 // ============================================================================
-// CONVERSATION MEMORY
-// Stores recent message history per chat so the bot can build incrementally
-// (e.g., "now add a cart page" makes sense after "build a Zomato app").
-// NOTE: in-memory only — resets when Render restarts. Files persist on GitHub.
+// PERSISTENT MEMORY
+// Loads conversation history + project state from disk (workspace/.hermes-memory.json)
+// so the bot remembers context across days and across Render restarts.
 // ============================================================================
-const conversationHistory = new Map(); // chatId -> [{ role, content }]
-const MAX_HISTORY = 20; // keep the last 20 messages (10 exchanges)
+let memory = loadMemory();
+
+/**
+ * Recursively lists files inside /workspace (skips hidden files) to give the
+ * bot a picture of what has already been built.
+ */
+function listWorkspaceFiles(dir = WORKSPACE_DIR, prefix = "") {
+  let out = [];
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch (e) {
+    return out;
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith(".")) continue; // skip .gitkeep, .hermes-memory.json, etc.
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      out = out.concat(listWorkspaceFiles(path.join(dir, entry.name), rel));
+    } else {
+      out.push(rel);
+    }
+  }
+  return out;
+}
+
+/**
+ * Builds a text summary of the current project state to inject into the
+ * system prompt, so the bot knows what already exists.
+ */
+function buildProjectContext(chatMemory) {
+  const files = listWorkspaceFiles();
+  const parts = [];
+  parts.push(`Files in /workspace: ${files.length ? files.join(", ") : "(none yet)"}`);
+  if (chatMemory.project && chatMemory.project.name) {
+    parts.push(`Active project: ${chatMemory.project.name} — ${chatMemory.project.description || ""}`);
+  }
+  return parts.join("\n");
+}
 
 /**
  * Main webhook handler. Every Telegram message hits this route.
@@ -123,13 +168,14 @@ app.post("/webhook", async (req, res) => {
     }
 
     // STEP 3: Send to DeepSeek brain for decision-making
-    const historyKey = String(chatId);
-    const history = conversationHistory.get(historyKey) || [];
+    const chatMemory = getChatMemory(memory, chatId);
+    const history = chatMemory.history || [];
+    const projectContext = buildProjectContext(chatMemory);
 
     await bot.sendMessage(chatId, "🤔 Thinking...");
     let action;
     try {
-      action = await decideAction(messageText, history);
+      action = await decideAction(messageText, history, projectContext);
     } catch (err) {
       console.error("[server] Brain error:", err.message);
       await bot.sendMessage(chatId, "⚠️ Sorry, the AI decision engine encountered an error. Please try again.");
@@ -142,11 +188,16 @@ app.post("/webhook", async (req, res) => {
     // STEP 5: Reply to user on Telegram
     await bot.sendMessage(chatId, result.message);
 
-    // STEP 5b: Remember this exchange for future context
-    history.push({ role: "user", content: messageText });
-    history.push({ role: "assistant", content: result.message });
-    while (history.length > MAX_HISTORY) history.shift();
-    conversationHistory.set(historyKey, history);
+    // STEP 5b: Remember this exchange (persisted to disk + GitHub)
+    rememberExchange(chatMemory, messageText, result.message);
+
+    // Track the project name if the user mentions building something
+    const projectMatch = messageText.match(/build|banao|create|banana/i) &&
+      messageText.match(/(?:an?|a)\s+([a-z]+)\s+(?:app|website|site|clone)/i);
+    if (projectMatch && projectMatch[1]) {
+      chatMemory.project.name = projectMatch[1];
+    }
+    saveMemory(memory);
 
     // STEP 6: Auto-commit if it was a file-modifying action (create/edit)
     // For destructive actions, the commit happens after confirmation

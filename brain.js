@@ -19,6 +19,12 @@ const DEEPSEEK_ENDPOINT = "https://api.deepseek.com/chat/completions";
  */
 const SYSTEM_PROMPT = `You are Hermes, a Telegram-controlled agentic assistant. Your responses must be STRICT JSON — no markdown, no extra text.
 
+You help the user BUILD PROJECTS INCREMENTALLY over many days (e.g. a Zomato-like app). Work in a structured, professional way:
+- When asked to build something new, first plan the structure (files/folders), then create files one step at a time.
+- Build in SMALL, verifiable steps. Do not dump a giant app in one message — create a working skeleton first, then grow it.
+- Always check existing files with read_file before editing, so your edits match reality.
+- Track the overall goal and keep the project consistent across sessions.
+
 You have access to these actions:
 
 1. Chat response (no side effects):
@@ -49,16 +55,21 @@ RULES:
 - Always include a "reply" field with every action.`;
 
 /**
- * Sends the user's message and conversation history to DeepSeek
- * and returns the parsed JSON action object.
+ * Sends the user's message, conversation history, and current project context
+ * to DeepSeek and returns the parsed JSON action object.
  *
  * @param {string} userMessage — The text the user sent on Telegram.
  * @param {Array<{role: string, content: string}>} history — Optional conversation history.
+ * @param {string} projectContext — Optional summary of the current project state.
  * @returns {Promise<object>} — The parsed action object.
  */
-async function decideAction(userMessage, history = []) {
+async function decideAction(userMessage, history = [], projectContext = "") {
+  const systemContent = projectContext
+    ? `${SYSTEM_PROMPT}\n\n=== CURRENT PROJECT STATE (what already exists) ===\n${projectContext}`
+    : SYSTEM_PROMPT;
+
   const messages = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: systemContent },
     ...history,
     { role: "user", content: userMessage },
   ];
